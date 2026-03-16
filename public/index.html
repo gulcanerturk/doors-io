@@ -459,9 +459,14 @@ socket.on('connect',function(){
   myId=socket.id;
   document.getElementById('cst').textContent='baglandi';
   document.getElementById('cst').style.color='#3af0c0';
+  // Eğer zaten join edilmişse tekrar setName gönder
+  if(joined){
+    try{socket.emit('setName',document.getElementById('ninp').value.trim()||'Oyuncu');}catch(e){}
+  }
 });
 socket.on('disconnect',function(){
-  document.getElementById('cst').textContent='baglanti kesildi';
+  document.getElementById('cst').textContent='baglanti kesildi - yeniden baglanıyor...';
+  document.getElementById('cst').style.color='#ff8844';
 });
 
 socket.on('init',function(d){
@@ -609,7 +614,8 @@ var lastInp=0, lastStep=0;
 setInterval(function(){
   if(!joined||!myId||!socket) return;
   var me=gs.players[myId];
-  if(!me||!me.alive||inWD) return;
+  // alive kontrolü: server'dan henüz gelmediyse de input gönder
+  if(me&&(!me.alive||inWD)) return;
   var now=Date.now();
   if(now-lastInp<33) return;
   lastInp=now;
@@ -619,11 +625,11 @@ setInterval(function(){
   if(keys.a||keys.arrowleft) dx=-1;
   if(keys.d||keys.arrowright) dx=1;
   if(jD.x||jD.y){dx=jD.x/JR; dy=jD.y/JR;}
-  var ang=Math.atan2((mouse.y+cam.y)-me.y,(mouse.x+cam.x)-me.x);
+  var ang=Math.atan2((mouse.y+cam.y)-(me?me.y:gc.height/2),(mouse.x+cam.x)-(me?me.x:gc.width/2));
   var sprint=!!(keys.shift||keys.shiftm);
-  socket.emit('input',{dx:dx,dy:dy,angle:ang,sprint:sprint});
+  try{socket.emit('input',{dx:dx,dy:dy,angle:ang,sprint:sprint});}catch(e){}
   if((dx||dy)&&now-lastStep>(sprint?140:320)){
-    playNoise(0.018,0.06); lastStep=now;
+    try{playNoise(0.018,0.06);}catch(e){} lastStep=now;
   }
 },16);
 
@@ -1376,11 +1382,34 @@ document.getElementById('ninp').addEventListener('keydown',function(e){if(e.key=
 // ── JOIN ─────────────────────────────────────────────────────
 window.join=function(){
   var name=document.getElementById('ninp').value.trim()||'Oyuncu';
+  // Socket bağlı değilse bekle
+  if(!socket||!socket.connected){
+    document.getElementById('cst').textContent='Baglanıyor, bekle...';
+    document.getElementById('cst').style.color='#ffaa44';
+    var tries=0;
+    var wait=setInterval(function(){
+      tries++;
+      if(socket&&socket.connected){
+        clearInterval(wait);
+        doJoin(name);
+      } else if(tries>30){
+        clearInterval(wait);
+        document.getElementById('cst').textContent='Baglantı hatası, sayfayı yenile';
+        document.getElementById('cst').style.color='#ff4444';
+      }
+    },200);
+    return;
+  }
+  doJoin(name);
+};
+function doJoin(name){
   try{socket.emit('setName',name);}catch(e){}
   document.getElementById('tscr').classList.add('hidden');
   joined=true;
+  // myId yoksa connect event'inden al
+  if(!myId) myId=socket.id;
   try{startAmbi();}catch(e){}
-};
+}
 
 window.doI=doI; window.cpz=cpz; window.cDrop=cDrop; window.oDrop=oDrop;
 window.openShop=openShop; window.closeShop=closeShop; window.closeMaze=closeMaze;
