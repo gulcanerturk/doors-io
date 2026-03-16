@@ -252,35 +252,36 @@ setInterval(()=>{
       if(m.alerted){
         m.alertTimer--;if(m.alertTimer<=0&&dist>260)m.alerted=false;
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*2.5,Math.sin(m.angle)*2.5,room);
+        const figSpd=3.8+(m.alertTimer>100?1.2:0); // hızlandı
+        moveEnt(m,Math.cos(m.angle)*figSpd,Math.sin(m.angle)*figSpd,room);
         if(dist<m.radius+target.radius+5){
-          target.health-=1.8;
+          target.health-=2.5; // daha fazla hasar
           if(target.health<=0){target.alive=false;target.health=0;const tid=findId(target);if(tid)io.to(tid).emit('youDied',{msg:'Figure tarafından yakalandın!'});}
         }
-      }else{m.pAngle+=0.01;moveEnt(m,Math.cos(m.pAngle),Math.sin(m.pAngle),room);m.angle=m.pAngle;if(dist<130)m.alerted=true;}
+      }else{m.pAngle+=0.015;moveEnt(m,Math.cos(m.pAngle)*1.5,Math.sin(m.pAngle)*1.5,room);m.angle=m.pAngle;if(dist<160)m.alerted=true;} // daha geniş algı
     }
     else if(m.type==='screech'){
-      if(!m.triggered&&dist<220){
+      if(!m.triggered&&dist<240){ // daha geniş tetik mesafesi
         if(!m.warned){m.warned=true;io.emit('monsterWarning',{type:'screech',x:m.x,y:m.y});}
         m.warnTimer++;
-        if(m.warnTimer>60){m.triggered=true;io.emit('monsterAlert',{type:'screech',x:m.x,y:m.y});}
+        if(m.warnTimer>40){m.triggered=true;io.emit('monsterAlert',{type:'screech',x:m.x,y:m.y});} // daha hızlı tetik
       }
       if(m.triggered){
         m.timer++;m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*2.5,Math.sin(m.angle)*2.5,room);
+        moveEnt(m,Math.cos(m.angle)*4.5,Math.sin(m.angle)*4.5,room); // çok hızlı
         if(dist<m.radius+target.radius+4){
           target.alive=false;target.health=0;const tid=findId(target);if(tid)io.to(tid).emit('youDied',{msg:'Screech tarafından yakalandın!'});
         }
-        if(m.timer>300){m.alive=false;return false;}
+        if(m.timer>240){m.alive=false;return false;} // daha az süre (4sn)
       }
     }
     else if(m.type==='seek'){
       const anyLight=aliveP.some(p=>p.lanternOn);
       if(!anyLight){
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*m.speed,Math.sin(m.angle)*m.speed,room);
+        moveEnt(m,Math.cos(m.angle)*(m.speed*1.8),Math.sin(m.angle)*(m.speed*1.8),room); // hızlandı
         if(dist<m.radius+target.radius+4){
-          target.health-=0.8;
+          target.health-=1.5; // daha fazla hasar
           if(target.health<=0){target.alive=false;target.health=0;const tid=findId(target);if(tid)io.to(tid).emit('youDied',{msg:'Seek tarafından yutulandın!'});}
         }
       }else{m.pAngle+=0.02;moveEnt(m,Math.cos(m.pAngle)*0.5,Math.sin(m.pAngle)*0.5,room);}
@@ -291,14 +292,14 @@ setInterval(()=>{
         if(dist<220&&!m.warned1){m.warned1=true;io.emit('monsterWarning',{type:'ambush',level:1,x:m.x,y:m.y});}
         if(dist<150&&!m.warned2){m.warned2=true;io.emit('monsterWarning',{type:'ambush',level:2,x:m.x,y:m.y});}
         if(dist<100&&!m.warned3){m.warned3=true;io.emit('monsterWarning',{type:'ambush',level:3,x:m.x,y:m.y});}
-        if(dist<70){m.triggered=true;m.triggerTimer=0;io.emit('monsterAlert',{type:'ambush',x:m.x,y:m.y});}
+        if(dist<80){m.triggered=true;m.triggerTimer=0;io.emit('monsterAlert',{type:'ambush',x:m.x,y:m.y});} // daha erken saldırı
       }else{
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*4,Math.sin(m.angle)*4,room);
+        moveEnt(m,Math.cos(m.angle)*5.5,Math.sin(m.angle)*5.5,room); // çok hızlı
         if(dist<m.radius+target.radius+4){
           target.alive=false;target.health=0;const tid=findId(target);if(tid)io.to(tid).emit('youDied',{msg:'Ambush tarafından yakalandın!'});
         }
-        m.triggerTimer++;if(m.triggerTimer>300){m.alive=false;return false;}
+        m.triggerTimer++;if(m.triggerTimer>240){m.alive=false;return false;} // daha az süre
       }
     }
     return true;
