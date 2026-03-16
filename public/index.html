@@ -287,7 +287,7 @@ body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Share T
   <div id="dtitle">OLDUN</div>
   <div id="dmsg"></div>
   <div id="ddoor"></div>
-  <button class="mbtn" onclick="location.reload()">TEKRAR KATIL</button>
+  <button class="mbtn" onclick="doRespawn()">TEKRAR KATIL</button>
 </div>
 
 <div class="scr hidden" id="wscr">
@@ -518,6 +518,28 @@ socket.on('youDied',function(d){
   closeMaze(); closeShop();
 });
 
+socket.on('respawnOk',function(d){
+  // Respawn başarılı — ölüm ekranını kapat
+  document.getElementById('dscr').classList.add('hidden');
+  // Kamerayı güncelle
+  if(d){cam.x=d.x-gc.width/2; cam.y=d.y-gc.height/2;}
+  // Stat sıfırla
+  ms.health=100; ms.inventory=[]; ms.shielded=false; uHUD();
+});
+
+socket.on('gameReset',function(d){
+  // Sunucu yeni oyun başlattı
+  roomData=d.room;
+  gs.items=d.items||[];
+  gs.dc=d.dc||0;
+  gs.rushActive=false;
+  gs.rushX=0;
+  swSolved=false;
+  document.getElementById('dscr').classList.add('hidden');
+  document.getElementById('wscr').classList.add('hidden');
+  particles=[]; floats=[];
+});
+
 socket.on('wardrobeState',function(d){
   inWD=d.inWD;
   if(inWD){document.getElementById('wd-ov').classList.add('vis'); sfxHide();}
@@ -600,6 +622,7 @@ socket.on('msg',function(d){
 });
 socket.on('gameOver',function(){
   document.getElementById('dmsg').textContent='Tum oyuncular oldu...';
+  document.getElementById('ddoor').textContent='';
   document.getElementById('dscr').classList.remove('hidden');
 });
 socket.on('gameWin',function(){
@@ -1380,8 +1403,20 @@ document.addEventListener('keyup',function(e){keys[e.key.toLowerCase()]=false;})
 document.getElementById('ninp').addEventListener('keydown',function(e){if(e.key==='Enter')join();});
 
 // ── JOIN ─────────────────────────────────────────────────────
-window.join=function(){
-  var name=document.getElementById('ninp').value.trim()||'Oyuncu';
+// ── RESPAWN ───────────────────────────────────────────────────
+window.doRespawn=function(){
+  if(!socket||!socket.connected){
+    // Bağlantı kopmuşsa yenile
+    location.reload(); return;
+  }
+  // Sunucuya respawn isteği gönder
+  socket.emit('respawn');
+  // Timeout — 3 saniye içinde respawnOk gelmezse yenile
+  var t=setTimeout(function(){location.reload();},3000);
+  socket.once('respawnOk',function(){clearTimeout(t);});
+};
+
+window.join=function(){  var name=document.getElementById('ninp').value.trim()||'Oyuncu';
   // Socket bağlı değilse bekle
   if(!socket||!socket.connected){
     document.getElementById('cst').textContent='Baglanıyor, bekle...';

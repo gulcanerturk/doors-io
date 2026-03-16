@@ -5,7 +5,7 @@ app.use(express.static(path.join(__dirname,'public')));
 const TILE=48,RW=15,RH=11,MAX_DOORS=50;
 const TF=0,TW=1,TD=2,TL=3,TE=6,TT=7,TWD=8,TSW=9;
 let rooms=[],dc=0,rushActive=false,rushX=0,rushSpd=0,rushPersist=false,nextRush=5+ri(8);
-let monsters=[],curRoom=0,items=[],phase='lobby',players={},tick=0,shopList=[];
+let monsters=[],curRoom=0,items=[],phase='lobby',players={},tick=0,shopList=[],gameOverTimer=null;
 
 function ri(n){return Math.floor(Math.random()*n);}
 function uid(){return Math.random().toString(36).slice(2,8);}
@@ -270,7 +270,23 @@ setInterval(()=>{
   });
 
   const aliveAll=Object.values(players).filter(p=>p.alive);
-  if(Object.keys(players).length>0&&aliveAll.length===0){phase='gameover';io.emit('gameOver',{dc});}
+  const totalPlayers=Object.keys(players).length;
+  if(totalPlayers>0&&aliveAll.length===0){
+    // 3 saniye bekle, belki biri reconnect eder
+    if(!gameOverTimer){
+      gameOverTimer=setTimeout(()=>{
+        gameOverTimer=null;
+        const stillAlive=Object.values(players).filter(p=>p.alive);
+        if(stillAlive.length===0&&Object.keys(players).length>0){
+          phase='gameover';
+          io.emit('gameOver',{dc});
+        }
+      },3000);
+    }
+  } else if(gameOverTimer&&aliveAll.length>0){
+    clearTimeout(gameOverTimer);
+    gameOverTimer=null;
+  }
 
   if(tick%2===0){
     io.emit('gameState',{
@@ -321,22 +337,64 @@ function advance(){
 function serRoom(r){return{g:r.g,ey:r.ey,type:r.type,n:r.n,w:r.w,h:r.h,hasFig:r.hasFig,switchLock:r.switchLock,swSolved:r.swSolved,maze:r.maze,swPos:r.swPos};}
 
 io.on('connection',socket=>{
-  if(rooms.length===0)initWorld();
+  // Dünya yoksa veya gameover/win durumundaysa sıfırla
+  if(rooms.length===0||phase==='gameover'||phase==='win'){
+    initWorld();
+  }
+
   const COLORS=['#1ab8ff','#3af0c0','#ffdd44','#ff8844','#aa44ff','#ff4499','#44ff99','#ff6644'];
   const color=COLORS[Object.keys(players).length%COLORS.length];
-  const ey=rooms[curRoom].ey,si=Object.keys(players).length;
+  const ey=rooms[curRoom].ey;
+  const si=Object.keys(players).length;
+
+  // Yeni oyuncuyu odanın başlangıcına yerleştir
+  const spawnY=ey*TILE+TILE/2+(si%4-1)*28;
   players[socket.id]={
-    x:TILE*2+TILE/2,y:ey*TILE+TILE/2+(si%3-1)*30,
+    x:TILE*2+TILE/2, y:spawnY,
     r:12,angle:0,health:100,maxHealth:100,spd:3.8,baseSpd:3.8,
     color,name:'Oyuncu',alive:true,score:0,gold:0,inventory:[],
     lanternFuel:100,lanternOn:true,inWD:false,readyNext:false,
     shielded:false,shieldHits:0,bootsTimer:0,sprinting:false,
     visitedRooms:new Set([curRoom])
   };
-  socket.emit('init',{id:socket.id,room:serRoom(rooms[curRoom]),items,monsters:monsters.map(m=>({id:m.id,type:m.type,x:m.x,y:m.y,r:m.r,alive:m.alive,disguised:m.disguised})),dc,curRoom,rushActive,rushX,phase,shopList});
+
+  // Eğer phase gameover idi ve sıfırladık, phase=playing yaptık
+  // Yeni oyuncuya güncel durumu gönder
+  socket.emit('init',{
+    id:socket.id,
+    room:serRoom(rooms[curRoom]),
+    items,
+    monsters:monsters.map(m=>({id:m.id,type:m.type,x:m.x,y:m.y,r:m.r,alive:m.alive,disguised:m.disguised})),
+    dc,curRoom,rushActive,rushX,phase,shopList
+  });
   socket.broadcast.emit('playerJoined',{name:'Oyuncu',color});
 
-  socket.on('setName',name=>{if(players[socket.id])players[socket.id].name=String(name).slice(0,16)||'Oyuncu';});
+  socket.on('setName',name=>{
+    const p=players[socket.id];
+    if(p) p.name=String(name).slice(0,16)||'Oyuncu';
+  });
+
+  // Respawn: öldükten sonra tekrar join edilince
+  socket.on('respawn',()=>{
+    const p=players[socket.id];
+    if(!p) return;
+    // Oyuncuyu sıfırla ve spawn et
+    const ey2=rooms[curRoom].ey;
+    const si2=Object.values(players).filter(pp=>pp.alive).length;
+    p.alive=true; p.health=100; p.inventory=[];
+    p.shielded=false; p.shieldHits=0; p.bootsTimer=0;
+    p.spd=p.baseSpd; p.lanternFuel=100; p.lanternOn=true;
+    p.inWD=false; p.readyNext=false;
+    p.x=TILE*2+TILE/2; p.y=ey2*TILE+TILE/2+(si2%4-1)*28;
+    // Eğer gameover idi, yeni oyun başlat
+    if(phase==='gameover'||phase==='win'){
+      initWorld();
+      p.x=TILE*2+TILE/2; p.y=rooms[curRoom].ey*TILE+TILE/2;
+      socket.emit('gameReset',{room:serRoom(rooms[curRoom]),items,dc:0,curRoom:0});
+    }
+    sendStats(p,socket.id);
+    socket.emit('respawnOk',{x:p.x,y:p.y});
+  });
 
   socket.on('input',data=>{
     const p=players[socket.id];if(!p||!p.alive||p.inWD)return;
