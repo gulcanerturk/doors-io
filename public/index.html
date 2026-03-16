@@ -519,25 +519,35 @@ socket.on('youDied',function(d){
 });
 
 socket.on('respawnOk',function(d){
-  // Respawn başarılı — ölüm ekranını kapat
   document.getElementById('dscr').classList.add('hidden');
-  // Kamerayı güncelle
-  if(d){cam.x=d.x-gc.width/2; cam.y=d.y-gc.height/2;}
-  // Stat sıfırla
-  ms.health=100; ms.inventory=[]; ms.shielded=false; uHUD();
+  document.getElementById('wscr').classList.add('hidden');
+  if(d&&d.x){cam.x=d.x-gc.width/2; cam.y=d.y-gc.height/2;}
+  uHUD();
 });
 
 socket.on('gameReset',function(d){
-  // Sunucu yeni oyun başlattı
+  // Sunucu yeni oyun başlattı — her şeyi sıfırla
   roomData=d.room;
   gs.items=d.items||[];
-  gs.dc=d.dc||0;
-  gs.rushActive=false;
-  gs.rushX=0;
+  gs.monsters=d.monsters||[];
+  gs.dc=0; gs.curRoom=0;
+  gs.rushActive=false; gs.rushX=0;
   swSolved=false;
+  screechDir=null;
+  particles=[]; floats=[];
+  inWD=false;
+  document.getElementById('wd-ov').classList.remove('vis');
   document.getElementById('dscr').classList.add('hidden');
   document.getElementById('wscr').classList.add('hidden');
-  particles=[]; floats=[];
+  document.getElementById('rush-w').style.display='none';
+  document.getElementById('wm').style.display='none';
+  document.getElementById('dctr').textContent='KAPI 0/50';
+  // Can ve envanteri sıfırla
+  ms.health=100; ms.maxHealth=100;
+  ms.inventory=[]; ms.shielded=false;
+  ms.bootsActive=false; ms.gold=ms.gold||0;
+  ms.lanternFuel=100; ms.lanternOn=true;
+  uHUD();
 });
 
 socket.on('wardrobeState',function(d){

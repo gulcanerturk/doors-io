@@ -374,24 +374,33 @@ io.on('connection',socket=>{
     if(p) p.name=String(name).slice(0,16)||'Oyuncu';
   });
 
-  // Respawn: öldükten sonra tekrar join edilince
+  // Respawn: öldükten sonra başa dön
   socket.on('respawn',()=>{
     const p=players[socket.id];
     if(!p) return;
-    // Oyuncuyu sıfırla ve spawn et
-    const ey2=rooms[curRoom].ey;
-    const si2=Object.values(players).filter(pp=>pp.alive).length;
-    p.alive=true; p.health=100; p.inventory=[];
-    p.shielded=false; p.shieldHits=0; p.bootsTimer=0;
-    p.spd=p.baseSpd; p.lanternFuel=100; p.lanternOn=true;
-    p.inWD=false; p.readyNext=false;
-    p.x=TILE*2+TILE/2; p.y=ey2*TILE+TILE/2+(si2%4-1)*28;
-    // Eğer gameover idi, yeni oyun başlat
-    if(phase==='gameover'||phase==='win'){
-      initWorld();
-      p.x=TILE*2+TILE/2; p.y=rooms[curRoom].ey*TILE+TILE/2;
-      socket.emit('gameReset',{room:serRoom(rooms[curRoom]),items,dc:0,curRoom:0});
-    }
+
+    // Dünyayı sıfırla — baştan başla
+    initWorld();
+
+    // TÜM oyuncuları sıfırla
+    Object.values(players).forEach((pp,i)=>{
+      pp.alive=true; pp.health=100; pp.inventory=[];
+      pp.shielded=false; pp.shieldHits=0; pp.bootsTimer=0;
+      pp.spd=pp.baseSpd; pp.lanternFuel=100; pp.lanternOn=true;
+      pp.inWD=false; pp.readyNext=false;
+      pp.x=TILE*2+TILE/2;
+      pp.y=rooms[0].ey*TILE+TILE/2+(i%4-1)*28;
+    });
+
+    // Herkese yeni oyun bildir
+    io.emit('gameReset',{
+      room:serRoom(rooms[0]),
+      items,
+      monsters:monsters.map(m=>({id:m.id,type:m.type,x:m.x,y:m.y,r:m.r,alive:m.alive,disguised:m.disguised})),
+      dc:0,curRoom:0
+    });
+
+    // Bu oyuncuya özel respawn ok
     sendStats(p,socket.id);
     socket.emit('respawnOk',{x:p.x,y:p.y});
   });
