@@ -203,6 +203,7 @@ socket.on('gameState',s=>{
   document.getElementById('door-counter').textContent=`KAPI ${s.doorCount}/50`;
 });
 socket.on('myStats',s=>{ms={...ms,...s};if(!ms.inventory)ms.inventory=[];uHUD();});
+socket.on('shieldHit',()=>{SFX.shield();fl(.2);aF(gs.players[myId]?.x||0,(gs.players[myId]?.y||0)-30,'KALKAN!','#44aaff',14);});
 socket.on('youDied',d=>{document.getElementById('dmsg').textContent=d.msg;document.getElementById('death-scr').classList.remove('hidden');SFX.hit();inWD=false;document.getElementById('wardrobe-ov').classList.remove('vis');});
 socket.on('wardrobeState',d=>{inWD=d.inWardrobe;if(inWD){document.getElementById('wardrobe-ov').classList.add('vis');SFX.hide();}else document.getElementById('wardrobe-ov').classList.remove('vis');});
 socket.on('rushStart',()=>{
@@ -554,13 +555,21 @@ function dIA(c,type){
   else if(type==='oil'){cx.fillStyle='#8B6914';cx.strokeStyle='#4a3008';cx.lineWidth=1.5;cx.beginPath();cx.roundRect(7,11,22,20,4);cx.fill();cx.stroke();cx.fillStyle='#c88820';cx.fillRect(11,5,14,8);}
   else if(type==='gold'){cx.fillStyle='#ffd700';cx.strokeStyle='#aa8800';cx.lineWidth=2;cx.beginPath();cx.arc(19,19,13,0,Math.PI*2);cx.fill();cx.stroke();cx.fillStyle='#aa8800';cx.font='bold 14px monospace';cx.textAlign='center';cx.textBaseline='middle';cx.fillText('$',19,19);}
   else if(type==='shield'){cx.fillStyle='#1a4a88';cx.strokeStyle='#44aaff';cx.lineWidth=2;cx.beginPath();cx.moveTo(19,4);cx.lineTo(30,11);cx.lineTo(30,22);cx.lineTo(19,34);cx.lineTo(8,22);cx.lineTo(8,11);cx.closePath();cx.fill();cx.stroke();cx.fillStyle='#44aaff';cx.font='bold 12px monospace';cx.textAlign='center';cx.textBaseline='middle';cx.fillText('▲',19,19);}
+  else if(type==='boots'){cx.fillStyle='#1a5530';cx.strokeStyle='#44ff88';cx.lineWidth=2;cx.beginPath();cx.roundRect(3,10,32,20,5);cx.fill();cx.stroke();cx.fillStyle='#44ff88';cx.font='bold 13px monospace';cx.textAlign='center';cx.textBaseline='middle';cx.fillText('▶▶',19,20);}
 }
 
 // ── HUD UPDATE ───────────────────────────────────────────────
 function uHUD(){
   document.getElementById('hp-bar').style.width=(ms.health/ms.maxHealth*100)+'%';
   document.getElementById('lt-bar').style.height=(ms.lanternFuel||0)+'%';
-  document.getElementById('shield-icon').style.display=ms.shielded?'block':'none';
+  // Kalkan göstergesi — kaç vuruş kaldı
+  const si=document.getElementById('shield-icon');
+  if(ms.shielded){si.style.display='block';si.textContent='🛡'.repeat(Math.max(1,ms.shieldHits||1));}
+  else si.style.display='none';
+  // Çizme göstergesi
+  let bi=document.getElementById('boots-icon');
+  if(!bi){bi=document.createElement('div');bi.id='boots-icon';bi.style.cssText='position:absolute;top:14px;left:20px;font-size:18px;display:none;';document.getElementById('hud').appendChild(bi);}
+  bi.style.display=ms.bootsActive?'block':'none';bi.textContent='👟';
   const lbls={key:'ANAHTAR',bandage:'SARGI',oil:'YAĞ',gold:'ALTIN',shield:'KALKAN',boots:'HIZ'};
   const inv=ms.inventory||[];
   for(let i=0;i<3;i++){

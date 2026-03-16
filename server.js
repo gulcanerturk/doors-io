@@ -86,14 +86,21 @@ function genRoom(n){
   if(Math.random()<0.55){const p=rp();if(p)ri.push({id:uid(),type:'bandage',x:p.x,y:p.y,label:'Sargı'});}
   if(Math.random()<0.4){const p=rp();if(p)ri.push({id:uid(),type:'oil',x:p.x,y:p.y,label:'Fener Yağı'});}
   if(Math.random()<0.25){const p=rp();if(p)ri.push({id:uid(),type:'gold',x:p.x,y:p.y,label:'Altın'});}
-  // Yeni item: kalkan
-  if(Math.random()<0.15&&n>5){const p=rp();if(p)ri.push({id:uid(),type:'shield',x:p.x,y:p.y,label:'Kalkan'});}
+  // Yeni item: kalkan ve çizme
+  if(Math.random()<0.2&&n>3){const p=rp();if(p)ri.push({id:uid(),type:'shield',x:p.x,y:p.y,label:'Kalkan'});}
+  if(Math.random()<0.2&&n>3){const p=rp();if(p)ri.push({id:uid(),type:'boots',x:p.x,y:p.y,label:'Çizme (Hız)'});}
 
   let monster=null;
   if(n>0&&n<MAX_DOORS){
     if(n===25)monster='seek';
-    else if(n===15)monster='mimic'; // yeni canavar
-    else{const r=Math.random();if(r<0.35&&n>=8)monster='screech';else if(r<0.65&&n>=3)monster='ambush';else if(r<0.75&&n>=20)monster='shadow';}
+    else if(n===15||n===35)monster='mimic'; // garantili mimic
+    else{
+      const r=Math.random();
+      if(r<0.28&&n>=8)monster='screech';
+      else if(r<0.52&&n>=3)monster='ambush';
+      else if(r<0.72&&n>=20)monster='shadow';  // %20 şans
+      else if(r<0.85&&n>=15)monster='mimic';   // %13 şans
+    }
   }
   let hasWD2=false;for(let y=0;y<RH;y++)for(let x=0;x<RW;x++)if(g[y][x]===TWD)hasWD2=true;
   return{g,ey,items:ri,monster,hasWardrobe:hasWD2,hasFigure:n===MAX_DOORS,type,n,w:RW*TILE,h:RH*TILE};
@@ -162,8 +169,15 @@ function killPlayer(target,msg){
 
 function damagePlayer(target,dmg){
   if(!target.alive)return;
-  // Kalkan varsa bloke et
-  if(target.shielded){target.shielded=false;io.emit('floatText',{x:target.x,y:target.y-30,text:'KALKAN KIRILD!',color:'#44aaff'});return;}
+  // Kalkan: 3 vuruşa kadar bloke eder
+  if(target.shielded&&target.shieldHits>0){
+    target.shieldHits--;
+    if(target.shieldHits<=0){target.shielded=false;}
+    const tid=findId(target);
+    if(tid)io.to(tid).emit('shieldHit');
+    io.emit('floatText',{x:target.x,y:target.y-30,text:'KALKAN! ('+(target.shieldHits)+' kaldı)',color:'#44aaff'});
+    return;
+  }
   target.health-=dmg;
   if(target.health<=0)killPlayer(target,'Canavar tarafından öldürüldün!');
 }
@@ -266,30 +280,28 @@ setInterval(()=>{
     }
 
     else if(m.type==='shadow'){
-      // Shadow: görünmez dolaşır, yakına gelince görünür ve saldırır
-      m.pAngle+=0.012;
+      m.pAngle+=0.015;
       if(!m.visible){
-        moveEnt(m,Math.cos(m.pAngle)*2,Math.sin(m.pAngle)*2,room);
-        if(dist<120){m.visible=true;m.visibleTimer=0;io.emit('monsterAlert',{type:'shadow',x:m.x,y:m.y});}
+        moveEnt(m,Math.cos(m.pAngle)*2.5,Math.sin(m.pAngle)*2.5,room);
+        if(dist<130){m.visible=true;m.visibleTimer=0;io.emit('monsterAlert',{type:'shadow',x:m.x,y:m.y});}
       }else{
         m.visibleTimer++;
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*4.5,Math.sin(m.angle)*4.5,room);
-        if(dist<m.radius+target.radius+4)damagePlayer(target,3);
-        if(m.visibleTimer>300){m.visible=false;m.visibleTimer=0;} // tekrar kaybolur
+        moveEnt(m,Math.cos(m.angle)*6,Math.sin(m.angle)*6,room); // hızlandı
+        if(dist<m.radius+target.radius+4)damagePlayer(target,3.5);
+        if(m.visibleTimer>280){m.visible=false;m.visibleTimer=0;}
       }
     }
 
     else if(m.type==='mimic'){
-      // Mimic: item gibi görünür, yaklaşınca saldırır
       if(!m.triggered){
-        if(dist<80){
+        if(dist<90){
           m.triggered=true;m.disguised=false;
           io.emit('monsterAlert',{type:'mimic',x:m.x,y:m.y});
         }
       }else{
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*5,Math.sin(m.angle)*5,room);
+        moveEnt(m,Math.cos(m.angle)*6.5,Math.sin(m.angle)*6.5,room); // hızlandı
         if(dist<m.radius+target.radius+4)killPlayer(target,'Mimic tarafından yakalandın!');
       }
     }
@@ -325,7 +337,12 @@ setInterval(()=>{
     if(!p.alive)continue;
     if(p.health<p.maxHealth)p.health=Math.min(p.maxHealth,p.health+0.04);
     if(p.lanternOn){p.lanternFuel=Math.max(0,p.lanternFuel-0.006);if(p.lanternFuel<=0)p.lanternOn=false;}
-    io.to(id).emit('myStats',{health:p.health,maxHealth:p.maxHealth,lanternFuel:p.lanternFuel,lanternOn:p.lanternOn,score:p.score,inventory:p.inventory,shielded:p.shielded});
+    // Çizme timer
+    if(p.bootsTimer>0){
+      p.bootsTimer--;
+      if(p.bootsTimer===0){p.speed=p.baseSpeed||2.8;io.emit('floatText',{x:p.x,y:p.y-30,text:'HIZ BİTTİ',color:'#aaaaaa'});}
+    }
+    io.to(id).emit('myStats',{health:p.health,maxHealth:p.maxHealth,lanternFuel:p.lanternFuel,lanternOn:p.lanternOn,score:p.score,inventory:p.inventory,shielded:p.shielded,shieldHits:p.shieldHits||0,bootsActive:p.bootsTimer>0});
   }
 },50);
 
@@ -362,9 +379,10 @@ io.on('connection',socket=>{
   const si=Object.keys(players).length;
   players[socket.id]={
     x:TILE*2+TILE/2,y:ey*TILE+TILE/2+(si%3-1)*30,
-    radius:12,angle:0,health:100,maxHealth:100,speed:2.8,
+    radius:12,angle:0,health:100,maxHealth:100,speed:2.8,baseSpeed:2.8,
     color,name:'Oyuncu',alive:true,score:0,inventory:[],
-    lanternFuel:100,lanternOn:true,inWardrobe:false,readyForNext:false,shielded:false
+    lanternFuel:100,lanternOn:true,inWardrobe:false,readyForNext:false,
+    shielded:false,shieldHits:0,bootsTimer:0
   };
   socket.emit('init',{id:socket.id,room:ser(rooms[currentRoom]),items,monsters:monsters.map(m=>({id:m.id,type:m.type,x:m.x,y:m.y,radius:m.radius,alive:m.alive,disguised:m.disguised})),doorCount,currentRoom,rushActive,rushX,phase:gamePhase});
   socket.broadcast.emit('playerJoined',{name:'Oyuncu',color});
@@ -400,7 +418,8 @@ io.on('connection',socket=>{
       const item=items.splice(idx,1)[0];
       if(item.type==='bandage'){p.health=Math.min(p.maxHealth,p.health+40);io.emit('floatText',{x:p.x,y:p.y-30,text:'+40 CAN',color:'#ff6688'});}
       else if(item.type==='oil'){p.lanternFuel=Math.min(100,p.lanternFuel+50);p.lanternOn=true;io.emit('floatText',{x:p.x,y:p.y-30,text:'+YAKIT',color:'#ffaa44'});}
-      else if(item.type==='shield'){p.shielded=true;io.emit('floatText',{x:p.x,y:p.y-30,text:'KALKAN AKTİF',color:'#44aaff'});}
+      else if(item.type==='shield'){p.shielded=true;p.shieldHits=3;io.emit('floatText',{x:p.x,y:p.y-30,text:'KALKAN AKTİF (3 vuruş)',color:'#44aaff'});}
+      else if(item.type==='boots'){p.speed=p.baseSpeed*1.9;p.bootsTimer=360;io.emit('floatText',{x:p.x,y:p.y-30,text:'HIZ AKTIF!',color:'#44ff88'});}
       else if(p.inventory.length<3)p.inventory.push(item);
       else{const d=p.inventory.shift();d.x=p.x+(Math.random()-0.5)*60;d.y=p.y+(Math.random()-0.5)*60;d.id=uid();items.push(d);io.emit('itemDropped',{item:d});p.inventory.push(item);}
       io.emit('itemPickedUp',{itemId:item.id,playerId:socket.id});
