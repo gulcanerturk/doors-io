@@ -692,7 +692,7 @@ let jD={x:0,y:0};const JR=42;
 jZ.addEventListener('touchstart',e=>{e.preventDefault();},{passive:false});
 jZ.addEventListener('touchmove',e=>{e.preventDefault();const t=e.touches[0];const r=jZ.getBoundingClientRect();let dx=t.clientX-(r.left+r.width/2),dy=t.clientY-(r.top+r.height/2);const d=Math.hypot(dx,dy);if(d>JR){dx=dx/d*JR;dy=dy/d*JR;}jD={x:dx,y:dy};jT.style.transform=`translate(${dx}px,${dy}px)`;},{passive:false});
 jZ.addEventListener('touchend',e=>{e.preventDefault();jD={x:0,y:0};jT.style.transform='translate(0,0)';},{passive:false});
-canvas?.addEventListener('touchmove',e=>{for(const t of e.touches)if(t.clientX>innerWidth/2){mouse.x=t.clientX;mouse.y=t.clientY;}},{passive:true});
+gc.addEventListener('touchmove',e=>{for(const t of e.touches)if(t.clientX>innerWidth/2){mouse.x=t.clientX;mouse.y=t.clientY;}},{passive:true});
 
 // ─── KEYBOARD ─────────────────────────────────────────────────
 document.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;const c=document.getElementById('cur');c.style.left=e.clientX+'px';c.style.top=e.clientY+'px';});
@@ -712,9 +712,10 @@ document.getElementById('ninp').addEventListener('keydown',e=>{if(e.key==='Enter
 
 window.join=function(){
   const name=document.getElementById('ninp').value.trim()||'Oyuncu';
-  socket.emit('setName',name);
+  try{socket.emit('setName',name);}catch(e){}
   document.getElementById('tscr').classList.add('hidden');
-  joined=true;startAmbians();
+  joined=true;
+  try{startAmbians();}catch(e){}
 };
 window.doI=doI;window.cpz=cpz;window.cDrop=cDrop;window.openShop=openShop;window.closeShop=closeShop;window.closeMaze=closeMaze;
 loop();
