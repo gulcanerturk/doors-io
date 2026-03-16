@@ -223,7 +223,7 @@ setInterval(()=>{
       if(m.triggered){
         m.timer++;
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*5.5,Math.sin(m.angle)*5.5,room);
+        moveEnt(m,Math.cos(m.angle)*7.5,Math.sin(m.angle)*7.5,room);
         if(dist<m.radius+target.radius+4)killPlayer(target,'Screech tarafından yakalandın!');
         // KALICI — kaybolmaz, sadece oyuncu ölünce durur
       }
@@ -253,7 +253,7 @@ setInterval(()=>{
         if(dist<85){m.triggered=true;m.triggerTimer=0;io.emit('monsterAlert',{type:'ambush',x:m.x,y:m.y});}
       }else{
         m.angle=Math.atan2(dy,dx);
-        moveEnt(m,Math.cos(m.angle)*6,Math.sin(m.angle)*6,room);
+        moveEnt(m,Math.cos(m.angle)*7,Math.sin(m.angle)*7,room);
         if(dist<m.radius+target.radius+4)killPlayer(target,'Ambush tarafından yakalandın!');
         m.triggerTimer++;
         // Oyuncu kaçarsa yeniden gizlenir — KAYBOLMAZ, saldırmaya devam eder

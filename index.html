@@ -202,7 +202,7 @@ socket.on('gameState',s=>{
   uPList(s.players);
   document.getElementById('door-counter').textContent=`KAPI ${s.doorCount}/50`;
 });
-socket.on('myStats',s=>{ms=s;uHUD();});
+socket.on('myStats',s=>{ms={...ms,...s};if(!ms.inventory)ms.inventory=[];uHUD();});
 socket.on('youDied',d=>{document.getElementById('dmsg').textContent=d.msg;document.getElementById('death-scr').classList.remove('hidden');SFX.hit();inWD=false;document.getElementById('wardrobe-ov').classList.remove('vis');});
 socket.on('wardrobeState',d=>{inWD=d.inWardrobe;if(inWD){document.getElementById('wardrobe-ov').classList.add('vis');SFX.hide();}else document.getElementById('wardrobe-ov').classList.remove('vis');});
 socket.on('rushStart',()=>{
@@ -559,14 +559,16 @@ function dIA(c,type){
 // ── HUD UPDATE ───────────────────────────────────────────────
 function uHUD(){
   document.getElementById('hp-bar').style.width=(ms.health/ms.maxHealth*100)+'%';
-  document.getElementById('lt-bar').style.height=ms.lanternFuel+'%';
+  document.getElementById('lt-bar').style.height=(ms.lanternFuel||0)+'%';
   document.getElementById('shield-icon').style.display=ms.shielded?'block':'none';
-  const lbls={key:'ANAHTAR',bandage:'SARGI',oil:'YAĞ',gold:'ALTIN',shield:'KALKAN'};
+  const lbls={key:'ANAHTAR',bandage:'SARGI',oil:'YAĞ',gold:'ALTIN',shield:'KALKAN',boots:'HIZ'};
+  const inv=ms.inventory||[];
   for(let i=0;i<3;i++){
-    const sl=document.getElementById('sl'+i),c=document.getElementById('sc'+i),lb=sl.querySelector('.slbl');
-    const item=ms.inventory[i];
-    if(item){sl.classList.add('on');dIA(c,item.type);lb.textContent=lbls[item.type]||item.label;}
-    else{sl.classList.remove('on');c.getContext('2d').clearRect(0,0,38,38);lb.textContent='BOŞ';}
+    const sl=document.getElementById('sl'+i),c=document.getElementById('sc'+i),lb=sl?.querySelector('.slbl');
+    if(!sl||!c||!lb)continue;
+    const item=inv[i];
+    if(item){sl.classList.add('on');dIA(c,item.type);lb.textContent=lbls[item.type]||item.label||'';}
+    else{sl.classList.remove('on');try{c.getContext('2d').clearRect(0,0,38,38);}catch(e){}lb.textContent='BOŞ';}
   }
 }
 
@@ -608,6 +610,8 @@ jzone.addEventListener('touchend',e=>{e.preventDefault();jD={x:0,y:0};jthumb.sty
 // ── KEYBOARD / MOUSE ─────────────────────────────────────────
 document.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY;const c=document.getElementById('cursor');c.style.left=e.clientX+'px';c.style.top=e.clientY+'px';});
 document.addEventListener('keydown',e=>{
+  // İsim yazarken klavyeyi bloklama
+  if(document.activeElement===document.getElementById('nameinp'))return;
   keys[e.key.toLowerCase()]=true;
   if(e.key.toLowerCase()==='e'||e.key===' ')doI();
   if(e.key.toLowerCase()==='l')socket.emit('interact',{type:'lantern'});
