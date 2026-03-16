@@ -50,7 +50,7 @@ function genRoom(n){
   if(Math.random()<0.55){const p=rp();ri2.push({id:uid(),type:'bandage',x:p.x,y:p.y,label:'Sargı'});}
   if(Math.random()<0.4){const p=rp();ri2.push({id:uid(),type:'oil',x:p.x,y:p.y,label:'Fener Yağı'});}
   if(Math.random()<0.3){const p=rp();ri2.push({id:uid(),type:'gold',x:p.x,y:p.y,label:'Altın (+10💰)'});}
-  if(Math.random()<0.18&&n>3){const p=rp();ri2.push({id:uid(),type:'shield',x:p.x,y:p.y,label:'Kalkan (3 vuruş)'});}
+  if(Math.random()<0.06&&n>5){const p=rp();ri2.push({id:uid(),type:'shield',x:p.x,y:p.y,label:'Kalkan (tek kullanım)'});}
   if(Math.random()<0.18&&n>3){const p=rp();ri2.push({id:uid(),type:'boots',x:p.x,y:p.y,label:'Çizme (Hız)'});}
   // Canavar
   let monster=null;
@@ -124,29 +124,25 @@ function moveE(e,dx,dy,room){
 
 function fid(t){return Object.keys(players).find(k=>players[k]===t);}
 
-// ─── KALKAN — KESİN ÇALIŞIYOR ────────────────────────────────
+// ─── KALKAN — TEK KULLANIMLIK ────────────────────────────────
 function shieldBlock(p){
-  // Önce kalkan var mı kontrol et
-  if(!p.shielded)return false;
-  if(p.shieldHits<=0){p.shielded=false;return false;}
-  // Kalkan vuruşu emer
-  p.shieldHits--;
-  if(p.shieldHits<=0)p.shielded=false;
+  if(!p.shielded||p.shieldHits<=0){p.shielded=false;return false;}
+  // Kalkan tam kırıldı — tek kullanım
+  p.shielded=false;p.shieldHits=0;
   const tid=fid(p);
   if(tid){
-    io.to(tid).emit('shieldHit',{hitsLeft:p.shieldHits});
-    io.emit('floatText',{x:p.x,y:p.y-30,text:'🛡 KALKAN! ('+p.shieldHits+' kaldı)',color:'#44aaff'});
+    io.to(tid).emit('shieldBroke');
+    io.emit('floatText',{x:p.x,y:p.y-30,text:'🛡 KALKAN KIRIDI!',color:'#44aaff'});
   }
-  return true; // engellendi
+  return true;
 }
 
 function kill(p,msg){
   if(!p||!p.alive)return;
+  // Kalkan saldırıyı tamamen durdurur — ama sonra kırılır
   if(shieldBlock(p)){
-    // Kalkan engelledi — can çok az düşsün
-    p.health=Math.max(10,p.health-15);
     const tid=fid(p);if(tid)sendStats(p,tid);
-    return;
+    return; // bu seferlik korundu, kalkan yok artık
   }
   p.alive=false;p.health=0;
   const tid=fid(p);if(tid)io.to(tid).emit('youDied',{msg});
@@ -156,9 +152,8 @@ function kill(p,msg){
 function dmg(p,d){
   if(!p||!p.alive)return;
   if(shieldBlock(p)){
-    p.health=Math.max(1,p.health-Math.ceil(d*0.2));
     const tid=fid(p);if(tid)sendStats(p,tid);
-    return;
+    return; // kalkan hasarı da bloklar
   }
   p.health-=d;
   if(p.health<=0)kill(p,'Canavar tarafından öldürüldün!');
@@ -213,14 +208,36 @@ setInterval(()=>{
       }
     }
     else if(m.type==='screech'){
-      if(!m.triggered&&d<260){
-        if(!m.warned){m.warned=true;io.emit('monsterWarning',{type:'screech',x:m.x,y:m.y});}
-        m.wTimer++;if(m.wTimer>25){m.triggered=true;io.emit('monsterAlert',{type:'screech',x:m.x,y:m.y});SFX_emit('screech');}
-      }
-      if(m.triggered){
-        m.angle=ang;const s=mspd(8);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);
+      // Screech: periyodik olarak oyuncunun yanında belirir, "pişt" sesi çıkarır
+      m.timer=(m.timer||0)+1;
+      if(!m.triggered){
+        // Her 180-260 tickte bir (9-13sn) oyuncunun yanında belirir
+        if(m.timer>m.nextAppear){
+          m.timer=0;
+          m.nextAppear=180+Math.floor(Math.random()*80);
+          // Oyuncunun tam yanına teleport et (1-2 tile uzakta)
+          const angle=Math.random()*Math.PI*2;
+          const dist2=TILE*1.5+Math.random()*TILE;
+          let nx=tgt.x+Math.cos(angle)*dist2;
+          let ny=tgt.y+Math.sin(angle)*dist2;
+          // Duvardan kaçın
+          nx=Math.max(TILE*2,Math.min(room.w-TILE*2,nx));
+          ny=Math.max(TILE*2,Math.min(room.h-TILE*2,ny));
+          m.x=nx;m.y=ny;
+          m.triggered=true;m.attackTimer=0;
+          // Yön bilgisini de gönder (oyuncuya göre hangi yönde)
+          const dir=Math.atan2(ny-tgt.y,nx-tgt.x);
+          io.emit('screechAppear',{x:nx,y:ny,targetId:fid(tgt),angle:dir});
+          SFX_emit('screech');
+        }
+      } else {
+        m.attackTimer=(m.attackTimer||0)+1;
+        m.angle=ang;
+        const s=mspd(9);
+        moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);
         if(d<m.r+tgt.r+4)kill(tgt,'Screech tarafından yakalandın!');
-        if(d>560)m.triggered=false;
+        // 4 saniye sonra kaybolur
+        if(m.attackTimer>80){m.triggered=false;m.attackTimer=0;m.timer=0;m.nextAppear=180+Math.floor(Math.random()*80);}
       }
     }
     else if(m.type==='seek'){
@@ -310,7 +327,7 @@ io.on('connection',socket=>{
   const ey=rooms[curRoom].ey,si=Object.keys(players).length;
   players[socket.id]={
     x:TILE*2+TILE/2,y:ey*TILE+TILE/2+(si%3-1)*30,
-    r:12,angle:0,health:100,maxHealth:100,spd:2.8,baseSpd:2.8,
+    r:12,angle:0,health:100,maxHealth:100,spd:3.8,baseSpd:3.8,
     color,name:'Oyuncu',alive:true,score:0,gold:0,inventory:[],
     lanternFuel:100,lanternOn:true,inWD:false,readyNext:false,
     shielded:false,shieldHits:0,bootsTimer:0,sprinting:false,
@@ -354,7 +371,7 @@ io.on('connection',socket=>{
       const item=items.splice(idx,1)[0];
       if(item.type==='bandage'){p.health=Math.min(p.maxHealth,p.health+40);io.emit('floatText',{x:p.x,y:p.y-30,text:'+40 CAN',color:'#ff6688'});}
       else if(item.type==='oil'){p.lanternFuel=Math.min(100,p.lanternFuel+50);p.lanternOn=true;io.emit('floatText',{x:p.x,y:p.y-30,text:'+YAKIT',color:'#ffaa44'});}
-      else if(item.type==='shield'){p.shielded=true;p.shieldHits=3;io.emit('floatText',{x:p.x,y:p.y-30,text:'🛡 KALKAN AKTİF (3 vuruş)',color:'#44aaff'});}
+      else if(item.type==='shield'){p.shielded=true;p.shieldHits=1;io.emit('floatText',{x:p.x,y:p.y-30,text:'🛡 KALKAN AKTİF (tek kullanım)',color:'#44aaff'});}
       else if(item.type==='boots'){p.spd=p.baseSpd*1.9;p.bootsTimer=360;io.emit('floatText',{x:p.x,y:p.y-30,text:'👟 HIZ AKTIF (18sn)',color:'#44ff88'});}
       else if(item.type==='gold'){p.gold+=10;p.score+=5;io.emit('floatText',{x:p.x,y:p.y-30,text:'+10 💰',color:'#ffd700'});}
       else if(p.inventory.length<3)p.inventory.push(item);
@@ -370,7 +387,7 @@ io.on('connection',socket=>{
       p.gold-=si.price;
       if(si.type==='bandage')p.health=Math.min(p.maxHealth,p.health+40);
       else if(si.type==='oil'){p.lanternFuel=Math.min(100,p.lanternFuel+50);p.lanternOn=true;}
-      else if(si.type==='shield'){p.shielded=true;p.shieldHits=3;}
+      else if(si.type==='shield'){p.shielded=true;p.shieldHits=1;}
       else if(si.type==='boots'){p.spd=p.baseSpd*1.9;p.bootsTimer=360;}
       else if(si.type==='key'&&p.inventory.length<3)p.inventory.push({id:uid(),type:'key',label:'Anahtar'});
       io.emit('floatText',{x:p.x,y:p.y-30,text:'SATIN ALINDI: '+si.label,color:'#ffd700'});sendStats(p,socket.id);
