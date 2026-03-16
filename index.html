@@ -130,6 +130,7 @@ body{background:#000;overflow:hidden;font-family:'Share Tech Mono',monospace;col
   <div id="wm">⏳ Diğer oyuncular bekleniyor...</div>
   <div id="plist"></div>
   <div id="drop-b"><span style="font-size:9px;color:rgba(255,80,80,.7);letter-spacing:2px;">BIRAK:</span></div>
+  <div id="perf" style="position:absolute;bottom:12px;right:14px;font-size:9px;color:rgba(255,255,255,.25);letter-spacing:1px;text-align:right;line-height:1.6;pointer-events:none;"></div>
 </div>
 <div id="wd-ov"><div id="wd-t">DOLAP</div><div id="wd-h">Saklanıyorsun — [ E ] çık</div></div>
 <div id="pz-ov"><div id="pz-box"><div id="pz-t">BULMACA</div><div style="font-size:9px;color:rgba(255,255,255,.4);letter-spacing:2px;">Sırayı ezberle ve tekrar et!</div><div id="pz-grid"></div><div id="pz-h"></div><button class="mbtn2" onclick="cpz()">KAPAT</button></div></div>
@@ -166,6 +167,10 @@ let cam={x:0,y:0},gs={players:{},monsters:[],items:[],rushActive:false,rushX:0,d
 let ms={health:100,maxHealth:100,lanternFuel:100,lanternOn:true,score:0,gold:0,inventory:[],shielded:false,shieldHits:0,bootsActive:false};
 let roomData=null,particles=[],floats=[],gt=0,nearI=null,inWD=false,pzActive=false,pzS={},dropMode=false;
 let shopItems=[],shopOpen=false,mazeOpen=false,mazePX=0,mazePY=0,swSolved=false;
+// FPS & Ping
+let fps=0,ping=0,fpsFrames=0,fpsLast=performance.now(),pingStart=0;
+// Interpolation
+let prevPlayers={},prevMonsters={};
 
 // ─── AUDIO ──────────────────────────────────────────────────
 let AC=null;
@@ -223,15 +228,28 @@ const SFX={
 
 // ─── SOCKET ─────────────────────────────────────────────────
 socket=io();
-socket.on('connect',()=>{myId=socket.id;document.getElementById('cst').textContent='bağlandı ✓';document.getElementById('cst').style.color='#3af0c0';});
+socket.on('connect',()=>{
+  myId=socket.id;
+  document.getElementById('cst').textContent='bağlandı ✓';
+  document.getElementById('cst').style.color='#3af0c0';
+  // Ping ölçümü başlat
+  setInterval(()=>{pingStart=performance.now();socket.emit('ping_c');},2000);
+});
+socket.on('pong_c',()=>{ping=Math.round(performance.now()-pingStart);});
 socket.on('init',d=>{myId=d.id;roomData=d.room;gs.items=d.items||[];gs.monsters=d.monsters||[];gs.rushActive=d.rushActive;gs.rushX=d.rushX;gs.dc=d.dc||0;if(d.shopList)shopItems=d.shopList;swSolved=d.room?.swSolved||false;});
 socket.on('gameState',s=>{
-  gs=s;if(!gs.items)gs.items=[];
-  swSolved=s.swSolved||false;
-  const me=s.players[myId];
+  // Items sadece değişince gelir
+  if(s.items!==undefined)gs.items=s.items;
+  if(s.players)gs.players=s.players;
+  if(s.monsters)gs.monsters=s.monsters;
+  if(s.rushActive!==undefined)gs.rushActive=s.rushActive;
+  if(s.rushX!==undefined)gs.rushX=s.rushX;
+  if(s.dc!==undefined)gs.dc=s.dc;
+  if(s.swSolved!==undefined)swSolved=s.swSolved;
+  const me=s.players?.[myId];
   if(me){cam.x=me.x-gc.width/2;cam.y=me.y-gc.height/2;}
-  uPList(s.players);
-  document.getElementById('dctr').textContent='KAPI '+(s.dc||0)+'/50';
+  uPList(gs.players);
+  document.getElementById('dctr').textContent='KAPI '+(gs.dc||0)+'/50';
 });
 socket.on('myStats',s=>{
   ms={...ms,...s};
@@ -286,10 +304,12 @@ socket.on('gameOver',()=>{document.getElementById('dmsg').textContent='Tüm oyun
 socket.on('gameWin',()=>{SFX.win();document.getElementById('wsub').textContent='50 kapıdan geçtiniz!';document.getElementById('wscr').classList.remove('hidden');});
 
 // ─── INPUT ───────────────────────────────────────────────────
-let lastStep=0;
+let lastStep=0,lastInput=0;
 setInterval(()=>{
   if(!joined||!myId)return;
   const me=gs.players[myId];if(!me||!me.alive||inWD)return;
+  // Input sadece 30fps ile gönder
+  const now2=Date.now();if(now2-lastInput<33)return;lastInput=now2;
   let dx=0,dy=0;
   if(keys.w||keys.arrowup)dy=-1;if(keys.s||keys.arrowdown)dy=1;
   if(keys.a||keys.arrowleft)dx=-1;if(keys.d||keys.arrowright)dx=1;
@@ -297,7 +317,7 @@ setInterval(()=>{
   const ang=Math.atan2((mouse.y+cam.y)-me.y,(mouse.x+cam.x)-me.x);
   const sprint=!!(keys.shift||keys.shiftm);
   socket.emit('input',{dx,dy,angle:ang,sprint});
-  if((dx||dy)&&Date.now()-lastStep>(sprint?150:350)){SFX.step();lastStep=Date.now();}
+  if((dx||dy)&&now2-lastStep>(sprint?150:350)){SFX.step();lastStep=now2;}
 },16);
 
 // ─── INTERACT ────────────────────────────────────────────────
@@ -622,14 +642,18 @@ function dLight(){
   const me=gs.players[myId];if(!me||!me.alive)return;
   lc.width=gc.width;lc.height=gc.height;
   const lx=me.x-cam.x,ly=me.y-cam.y;
-  const r=ms.lanternOn?(218+Math.sin(gt*.05)*7):28;
-  lctx.fillStyle=ms.lanternOn?'rgba(0,0,0,.83)':'rgba(0,0,0,.97)';lctx.fillRect(0,0,lc.width,lc.height);
+  const r=ms.lanternOn?(218+Math.sin(gt*.05)*5):28;
+  lctx.fillStyle=ms.lanternOn?'rgba(0,0,0,.83)':'rgba(0,0,0,.97)';
+  lctx.fillRect(0,0,lc.width,lc.height);
   lctx.globalCompositeOperation='destination-out';
   const grd=lctx.createRadialGradient(lx,ly,0,lx,ly,r);
-  grd.addColorStop(0,'rgba(0,0,0,1)');grd.addColorStop(.43,'rgba(0,0,0,.95)');grd.addColorStop(.73,'rgba(0,0,0,.52)');grd.addColorStop(1,'rgba(0,0,0,0)');
-  lctx.fillStyle=grd;lctx.beginPath();lctx.arc(lx,ly,r,0,Math.PI*2);lctx.fill();lctx.globalCompositeOperation='source-over';
+  grd.addColorStop(0,'rgba(0,0,0,1)');
+  grd.addColorStop(.5,'rgba(0,0,0,.9)');
+  grd.addColorStop(.8,'rgba(0,0,0,.4)');
+  grd.addColorStop(1,'rgba(0,0,0,0)');
+  lctx.fillStyle=grd;lctx.beginPath();lctx.arc(lx,ly,r,0,Math.PI*2);lctx.fill();
+  lctx.globalCompositeOperation='source-over';
   ctx.drawImage(lc,0,0);
-  if(ms.lanternOn){ctx.save();const t=ctx.createRadialGradient(lx,ly,0,lx,ly,185);t.addColorStop(0,'rgba(255,145,40,.1)');t.addColorStop(.55,'rgba(255,100,20,.04)');t.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=t;ctx.beginPath();ctx.arc(lx,ly,185,0,Math.PI*2);ctx.fill();ctx.restore();}
 }
 
 function dVig(){
@@ -682,7 +706,22 @@ function loop(){
   requestAnimationFrame(loop);
   if(!joined)return;
   gt++;
-  ctx.clearRect(0,0,gc.width,gc.height);ctx.fillStyle='#000';ctx.fillRect(0,0,gc.width,gc.height);
+
+  // FPS sayacı
+  fpsFrames++;
+  const now=performance.now();
+  if(now-fpsLast>=1000){
+    fps=fpsFrames;fpsFrames=0;fpsLast=now;
+    const pf=document.getElementById('perf');
+    if(pf){
+      const fpsColor=fps>=50?'rgba(80,255,80,.5)':fps>=30?'rgba(255,200,50,.5)':'rgba(255,80,80,.6)';
+      const pingColor=ping<=80?'rgba(80,255,80,.5)':ping<=150?'rgba(255,200,50,.5)':'rgba(255,80,80,.6)';
+      pf.innerHTML=`<span style="color:${fpsColor}">${fps} FPS</span><br><span style="color:${pingColor}">${ping} ms</span>`;
+    }
+  }
+
+  ctx.clearRect(0,0,gc.width,gc.height);
+  ctx.fillStyle='#000';ctx.fillRect(0,0,gc.width,gc.height);
   chkNear();dRoom();dItems();dParts();dMonsters();dPlayers();dRush();dLight();dVig();
 }
 

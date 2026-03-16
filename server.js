@@ -258,14 +258,18 @@ setInterval(()=>{
   if(tick%2===0){
     io.emit('gameState',{
       players:Object.fromEntries(Object.entries(players).map(([id,p])=>[id,{
-        x:Math.round(p.x),y:Math.round(p.y),angle:+p.angle.toFixed(2),
+        x:Math.round(p.x),y:Math.round(p.y),angle:+(p.angle||0).toFixed(1),
         health:Math.round(p.health),maxHealth:p.maxHealth,r:p.r,color:p.color,
         name:p.name,alive:p.alive,inWD:p.inWD,lanternOn:p.lanternOn,
-        score:p.score,shielded:p.shielded,sprinting:p.sprinting
+        shielded:p.shielded
       }])),
-      monsters:monsters.map(m=>({id:m.id,type:m.type,x:Math.round(m.x),y:Math.round(m.y),angle:+(m.angle||0).toFixed(2),alerted:m.alerted,triggered:m.triggered,w1:m.w1,warned:m.warned,alive:m.alive,vis:m.vis,disguised:m.disguised})),
-      items:items.map(i=>({id:i.id,type:i.type,x:Math.round(i.x),y:Math.round(i.y),label:i.label})),
-      rushActive,rushX:Math.round(rushX),dc,curRoom,phase,swSolved:room.swSolved
+      monsters:monsters.map(m=>({id:m.id,type:m.type,
+        x:Math.round(m.x),y:Math.round(m.y),angle:+(m.angle||0).toFixed(1),
+        alerted:m.alerted,triggered:m.triggered,w1:m.w1,warned:m.warned,
+        alive:m.alive,vis:m.vis,disguised:m.disguised})),
+      items:tick%6===0?items.map(i=>({id:i.id,type:i.type,x:Math.round(i.x),y:Math.round(i.y),label:i.label})):undefined,
+      rushActive,rushX:rushActive?Math.round(rushX):undefined,
+      dc,curRoom,swSolved:room.swSolved
     });
   }
 
