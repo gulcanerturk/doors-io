@@ -258,14 +258,18 @@ setInterval(()=>{
   if(tick%2===0){
     io.emit('gameState',{
       players:Object.fromEntries(Object.entries(players).map(([id,p])=>[id,{
-        x:Math.round(p.x),y:Math.round(p.y),angle:+p.angle.toFixed(2),
+        x:Math.round(p.x),y:Math.round(p.y),angle:+(p.angle||0).toFixed(1),
         health:Math.round(p.health),maxHealth:p.maxHealth,r:p.r,color:p.color,
         name:p.name,alive:p.alive,inWD:p.inWD,lanternOn:p.lanternOn,
-        score:p.score,shielded:p.shielded,sprinting:p.sprinting
+        shielded:p.shielded
       }])),
-      monsters:monsters.map(m=>({id:m.id,type:m.type,x:Math.round(m.x),y:Math.round(m.y),angle:+(m.angle||0).toFixed(2),alerted:m.alerted,triggered:m.triggered,w1:m.w1,warned:m.warned,alive:m.alive,vis:m.vis,disguised:m.disguised})),
-      items:items.map(i=>({id:i.id,type:i.type,x:Math.round(i.x),y:Math.round(i.y),label:i.label})),
-      rushActive,rushX:Math.round(rushX),dc,curRoom,phase,swSolved:room.swSolved
+      monsters:monsters.map(m=>({id:m.id,type:m.type,
+        x:Math.round(m.x),y:Math.round(m.y),angle:+(m.angle||0).toFixed(1),
+        alerted:m.alerted,triggered:m.triggered,w1:m.w1,warned:m.warned,
+        alive:m.alive,vis:m.vis,disguised:m.disguised})),
+      items:tick%6===0?items.map(i=>({id:i.id,type:i.type,x:Math.round(i.x),y:Math.round(i.y),label:i.label})):undefined,
+      rushActive,rushX:rushActive?Math.round(rushX):undefined,
+      dc,curRoom,swSolved:room.swSolved
     });
   }
 
@@ -290,9 +294,9 @@ function advance(){
   const ey=rooms[curRoom].ey;
   alive.forEach((p,i)=>{p.x=TILE*2+TILE/2;p.y=ey*TILE+TILE/2+(i-Math.floor(alive.length/2))*30;});
   if(!rushPersist&&dc===nextRush&&rooms[curRoom].hasWD){
-    rushActive=true;rushX=-800;rushSpd=3.5+Math.random()*1.5;rushPersist=true;
-    nextRush=dc+5+ri(10);io.emit('rushStart');
-  }else if(rushPersist){rushX=-800;}else{rushActive=false;}
+    rushActive=true;rushX=-1200;rushSpd=7+Math.random()*2;rushPersist=true;
+    nextRush=dc+5+ri(10);io.emit('rushStart',{spd:rushSpd});
+  }else if(rushPersist){rushX=-1200;}else{rushActive=false;}
   alive.forEach(p=>{if(p.visitedRooms)p.visitedRooms.add(curRoom);});
   io.emit('roomChanged',{room:serRoom(rooms[curRoom]),items,dc,curRoom,rushActive,rushX});
 }
