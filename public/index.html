@@ -159,6 +159,23 @@ body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Share T
 #wtitle{font-family:'Creepster',cursive;font-size:clamp(48px,10vw,68px);color:#44ff88;letter-spacing:6px;}
 #wsub{font-size:11px;color:rgba(255,255,255,.35);letter-spacing:2px;text-align:center;}
 
+/* Chat */
+#chat-wrap{position:fixed;bottom:72px;left:14px;width:240px;z-index:30;pointer-events:none;}
+#chat-msgs{display:flex;flex-direction:column;gap:3px;margin-bottom:5px;max-height:140px;overflow:hidden;justify-content:flex-end;}
+.chat-line{font-size:11px;background:rgba(0,0,0,.65);padding:3px 8px;border-radius:4px;
+  border-left:2px solid;word-break:break-word;line-height:1.4;
+  animation:fadeChat 8s forwards;pointer-events:none;}
+@keyframes fadeChat{0%,65%{opacity:1}100%{opacity:0}}
+#chat-form{display:flex;gap:5px;pointer-events:all;}
+#chat-inp{flex:1;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.18);
+  color:#fff;font-family:'Share Tech Mono',monospace;font-size:11px;padding:5px 8px;
+  border-radius:4px;outline:none;min-width:0;}
+#chat-inp:focus{border-color:rgba(200,169,110,.55);}
+#chat-send{background:rgba(200,169,110,.12);border:1px solid rgba(200,169,110,.38);
+  color:#c8a96e;font-family:'Share Tech Mono',monospace;font-size:10px;padding:5px 10px;
+  border-radius:4px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
+#chat-send:active{background:rgba(200,169,110,.28);}
+
 /* Mobile controls */
 #mob{position:fixed;bottom:0;left:0;width:100%;height:220px;pointer-events:none;z-index:20;display:none;}
 #jzone{position:absolute;bottom:14px;left:10px;width:140px;height:140px;pointer-events:all;z-index:21;}
@@ -204,6 +221,9 @@ body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Share T
   #drop-b{bottom:256px;}
   #ih{top:38%;}
   #wm{top:32%;}
+  #chat-wrap{bottom:228px;width:195px;}
+  #chat-msgs{max-height:90px;}
+  #chat-inp{font-size:10px;padding:4px 6px;}
 }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -270,6 +290,16 @@ body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Share T
 
 <div id="kflash"></div>
 <div id="vig"></div>
+
+<!-- Chat -->
+<div id="chat-wrap">
+  <div id="chat-msgs"></div>
+  <div id="chat-form">
+    <input id="chat-inp" type="text" placeholder="Mesaj yaz..." maxlength="80"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+    <button id="chat-send" onclick="sendChat()">GÖNDER</button>
+  </div>
+</div>
 
 <div class="scr" id="tscr">
   <div id="gtitle">DOORS.IO</div>
@@ -641,6 +671,42 @@ socket.on('gameWin',function(){
   document.getElementById('wscr').classList.remove('hidden');
 });
 socket.on('ping_c',function(){socket.emit('pong_c');});
+
+// ── CHAT ─────────────────────────────────────────────────────
+socket.on('chatMsg',function(d){
+  var msgs=document.getElementById('chat-msgs');
+  if(!msgs)return;
+  var line=document.createElement('div');
+  line.className='chat-line';
+  line.style.borderColor=d.color||'#c8a96e';
+  // XSS koruması — textContent kullan
+  var nameSpan=document.createElement('span');
+  nameSpan.style.color=d.color||'#c8a96e';
+  nameSpan.style.fontWeight='bold';
+  nameSpan.textContent=d.name+': ';
+  var textSpan=document.createElement('span');
+  textSpan.style.color='rgba(255,255,255,.88)';
+  textSpan.textContent=d.text;
+  line.appendChild(nameSpan);
+  line.appendChild(textSpan);
+  msgs.appendChild(line);
+  // En fazla 20 mesaj tut
+  while(msgs.children.length>20) msgs.removeChild(msgs.firstChild);
+  // Mesaj bittikten sonra kaldır (animasyon bittikten sonra)
+  setTimeout(function(){if(line.parentNode===msgs)msgs.removeChild(line);},8000);
+});
+
+function sendChat(){
+  var inp=document.getElementById('chat-inp');
+  if(!inp||!socket)return;
+  var text=inp.value.trim();
+  if(!text)return;
+  socket.emit('chat',text);
+  inp.value='';
+  inp.focus();
+}
+
+window.sendChat=sendChat;
 
 // ── INPUT ────────────────────────────────────────────────────
 var lastInp=0, lastStep=0;
@@ -1399,17 +1465,35 @@ document.addEventListener('mousemove',function(e){
   var c=document.getElementById('cur'); c.style.left=e.clientX+'px'; c.style.top=e.clientY+'px';
 });
 document.addEventListener('keydown',function(e){
-  if(document.activeElement===document.getElementById('ninp')) return;
+  var active=document.activeElement;
+  // Chat input aktifse sadece Enter/Escape yakala
+  if(active===document.getElementById('chat-inp')){
+    if(e.key==='Enter'){sendChat(); e.preventDefault();}
+    if(e.key==='Escape'){active.blur(); e.preventDefault();}
+    return;
+  }
+  // Name input aktifse sadece Enter yakala
+  if(active===document.getElementById('ninp')){return;}
+  // Oyun tuşları
   keys[e.key.toLowerCase()]=true;
   if(e.key.toLowerCase()==='e'||e.key===' ') doI();
   if(e.key.toLowerCase()==='l'&&socket) socket.emit('interact',{type:'lantern'});
   if(e.key.toLowerCase()==='q'){if(dropMode)cDrop();else oDrop();}
   if(e.key.toLowerCase()==='b'&&socket) socket.emit('interact',{type:'goBack'});
   if(e.key.toLowerCase()==='o') openShop();
+  if(e.key.toLowerCase()==='t'){
+    var ci=document.getElementById('chat-inp');
+    if(ci&&joined){ci.focus();e.preventDefault();return;}
+  }
   if(e.key==='Escape'){cpz();cDrop();closeMaze();closeShop();}
   e.preventDefault();
 });
-document.addEventListener('keyup',function(e){keys[e.key.toLowerCase()]=false;});
+document.addEventListener('keyup',function(e){
+  // Chat veya name input aktifken key release'i temizle
+  if(document.activeElement===document.getElementById('chat-inp')) return;
+  if(document.activeElement===document.getElementById('ninp')) return;
+  keys[e.key.toLowerCase()]=false;
+});
 document.getElementById('ninp').addEventListener('keydown',function(e){if(e.key==='Enter')join();});
 
 // ── JOIN ─────────────────────────────────────────────────────

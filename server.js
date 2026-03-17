@@ -472,6 +472,16 @@ io.on('connection',socket=>{
   });
 
   socket.on('ping_c',()=>socket.emit('pong_c'));
+
+  // Chat
+  socket.on('chat',msg=>{
+    const p=players[socket.id];
+    if(!p)return;
+    const name=p.name||'Oyuncu';
+    const text=String(msg).slice(0,80).replace(/[<>]/g,'');
+    if(!text.trim())return;
+    io.emit('chatMsg',{name,color:p.color,text,id:socket.id});
+  });
   socket.on('disconnect',()=>{
     delete players[socket.id];
     if(!Object.keys(players).length){rooms=[];phase='lobby';monsters=[];items=[];dc=0;curRoom=0;rushActive=false;}
