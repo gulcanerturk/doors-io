@@ -512,7 +512,16 @@ socket.on('init',function(d){
 });
 
 socket.on('gameState',function(s){
-  if(s.players) gs.players=s.players;
+  // _bubble verilerini koru
+  if(s.players){
+    Object.keys(s.players).forEach(function(id){
+      if(gs.players[id]&&gs.players[id]._bubble){
+        s.players[id]._bubble=gs.players[id]._bubble;
+        s.players[id]._bubbleTimer=gs.players[id]._bubbleTimer;
+      }
+    });
+    gs.players=s.players;
+  }
   if(s.monsters) gs.monsters=s.monsters;
   if(s.items!==undefined) gs.items=s.items;
   if(s.rushActive!==undefined) gs.rushActive=s.rushActive;
