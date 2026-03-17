@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Doors IO</string>
+    <string name="title_activity_main">Doors IO</string>
+    <string name="package_name">com.senin.doorsio</string>
+    <string name="custom_url_scheme">com.senin.doorsio</string>
+</resources>

@@ -542,7 +542,8 @@ function sfxShadow(){playTone(135,'sine',0.12,0.4); playNoise(0.09,0.3,0.1);}
 function sfxMimic(){playTone(295,'sawtooth',0.2,0.28); playNoise(0.16,0.18,0.04);}
 
 // ── SOCKET ───────────────────────────────────────────────────
-socket=io();
+var isNative=!!(window.Capacitor&&window.Capacitor.isNative);
+socket=isNative?io('https://doors-io-production.up.railway.app'):io();
 
 socket.on('connect',function(){
   myId=socket.id;
