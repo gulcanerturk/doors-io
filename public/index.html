@@ -326,9 +326,60 @@ body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Share T
   <button class="mbtn" onclick="location.reload()">TEKRAR OYNA</button>
 </div>
 
+<!-- Settings overlay -->
+<div id="settings-ov" style="position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;flex-direction:column;gap:0;z-index:60;pointer-events:all;">
+  <div style="background:#0c0906;border:1px solid rgba(200,169,110,.35);border-radius:10px;padding:28px 32px;min-width:min(340px,90vw);display:flex;flex-direction:column;gap:16px;">
+    <div style="font-family:'Creepster',cursive;font-size:22px;color:#c8a96e;letter-spacing:4px;text-align:center;">AYARLAR</div>
+
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <!-- Ses -->
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:2px;">
+        SES
+        <input type="range" id="set-volume" min="0" max="100" value="80" style="width:120px;cursor:pointer;" oninput="applySettings()">
+      </label>
+      <!-- Müzik -->
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:2px;">
+        AMBİYANS MÜZİK
+        <input type="checkbox" id="set-music" checked style="width:18px;height:18px;cursor:pointer;" onchange="applySettings()">
+      </label>
+      <!-- FPS göstergesi -->
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:2px;">
+        FPS GÖSTER
+        <input type="checkbox" id="set-fps" style="width:18px;height:18px;cursor:pointer;" onchange="applySettings()">
+      </label>
+      <!-- Titreşim (mobil) -->
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:2px;">
+        TİTREŞİM (MOBİL)
+        <input type="checkbox" id="set-vibrate" checked style="width:18px;height:18px;cursor:pointer;" onchange="applySettings()">
+      </label>
+      <!-- Chat göster/gizle -->
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:2px;">
+        CHAT GÖSTER
+        <input type="checkbox" id="set-chat" checked style="width:18px;height:18px;cursor:pointer;" onchange="applySettings()">
+      </label>
+      <!-- Işık kalitesi -->
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:rgba(255,255,255,.7);letter-spacing:2px;">
+        IŞIK KALİTESİ
+        <select id="set-light" style="background:#1a1208;color:#c8a96e;border:1px solid rgba(200,169,110,.3);padding:3px 8px;border-radius:3px;font-size:10px;cursor:pointer;" onchange="applySettings()">
+          <option value="high">YÜKSEK</option>
+          <option value="low">DÜŞÜK</option>
+          <option value="off">KAPALI</option>
+        </select>
+      </label>
+    </div>
+
+    <div id="fps-display" style="font-size:10px;color:rgba(255,255,255,.3);letter-spacing:2px;text-align:center;display:none;">FPS: --</div>
+
+    <div style="display:flex;gap:10px;justify-content:center;">
+      <button class="smb" onclick="closeSettings()">KAPAT</button>
+      <button class="smb" onclick="resetSettings()" style="color:rgba(255,80,80,.6);border-color:rgba(255,80,80,.3);">SIFIRLA</button>
+    </div>
+  </div>
+</div>
+
 <div id="mob">
   <div id="jzone"><div id="jbase"></div><div id="jthumb"></div></div>
-  <div id="ebtn" id="ebtn">E</div>
+  <div id="ebtn">E</div>
   <div id="rbtn">RUN</div>
   <div id="lbtn">LT</div>
   <div id="shopbtn">$</div>
@@ -400,6 +451,10 @@ var swSolved=false;
 var screechDir=null;
 var mazePX=0,mazePY=0;
 
+// Ayarlar
+// settings yukarıda tanımlandı
+var fpsFrames=0,fpsLast=0,fpsVal=0;
+
 // ── SES ──────────────────────────────────────────────────────
 var AC=null;
 function gAC(){
@@ -408,6 +463,8 @@ function gAC(){
 }
 function playTone(f,t,v,d,dl){
   dl=dl||0;
+  var vol=v*((settings&&settings.volume!=null?settings.volume:80)/100);
+  if(vol<=0) return;
   try{
     var a=gAC(); if(!a)return;
     var o=a.createOscillator();
@@ -415,7 +472,7 @@ function playTone(f,t,v,d,dl){
     o.connect(g); g.connect(a.destination);
     o.type=t; o.frequency.value=f;
     g.gain.setValueAtTime(0,a.currentTime+dl);
-    g.gain.linearRampToValueAtTime(v,a.currentTime+dl+0.01);
+    g.gain.linearRampToValueAtTime(vol,a.currentTime+dl+0.01);
     g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+dl+d);
     o.start(a.currentTime+dl);
     o.stop(a.currentTime+dl+d);
@@ -423,6 +480,8 @@ function playTone(f,t,v,d,dl){
 }
 function playNoise(v,d,dl){
   dl=dl||0;
+  var vol=v*((settings&&settings.volume!=null?settings.volume:80)/100);
+  if(vol<=0) return;
   try{
     var a=gAC(); if(!a)return;
     var buf=a.createBuffer(1,Math.floor(a.sampleRate*d),a.sampleRate);
@@ -433,7 +492,7 @@ function playNoise(v,d,dl){
     var f=a.createBiquadFilter();
     s.buffer=buf; f.type='bandpass'; f.frequency.value=300;
     s.connect(f); f.connect(g); g.connect(a.destination);
-    g.gain.setValueAtTime(v,a.currentTime+dl);
+    g.gain.setValueAtTime(vol,a.currentTime+dl);
     g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+dl+d);
     s.start(a.currentTime+dl);
     s.stop(a.currentTime+dl+d);
@@ -1162,29 +1221,29 @@ function drawPlayers(){
     ctx.fillRect(sx-bw/2,sy-r-11,bw*Math.max(0,Math.min(1,p.health/p.maxHealth)),6);
 
     // Chat baloncuğu
-    if(p._bubble&&p._bubbleTimer>0){
+    if(settings.showBubble&&p._bubble&&p._bubbleTimer>0){
       p._bubbleTimer--;
       var btxt=p._bubble;
-      var bAlpha=Math.min(1,p._bubbleTimer/20);
+      var bAlpha=p._bubbleTimer>20?1:p._bubbleTimer/20; // son 20 frame'de solar
       ctx.save();
       ctx.globalAlpha=bAlpha;
-      ctx.font='bold 10px monospace'; ctx.textAlign='center';
-      var bw2=ctx.measureText(btxt).width+14;
-      var bh=18, bx=sx-bw2/2, by=sy-r-42;
+      ctx.font='bold 10px monospace'; ctx.textAlign='center'; ctx.shadowBlur=0;
+      var btw=Math.min(ctx.measureText(btxt).width+16, 200);
+      var bth=20, btx=sx-btw/2, bty=sy-r-46;
       // Arka plan
-      ctx.fillStyle='rgba(0,0,0,.75)';
-      ctx.beginPath(); ctx.roundRect(bx,by,bw2,bh,4); ctx.fill();
+      ctx.fillStyle='rgba(0,0,0,.82)';
+      ctx.beginPath(); ctx.roundRect(btx,bty,btw,bth,5); ctx.fill();
       // Kenarlık
       ctx.strokeStyle=p.color||'#c8a96e'; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.roundRect(bx,by,bw2,bh,4); ctx.stroke();
-      // Küçük üçgen (konuşma oku)
-      ctx.fillStyle='rgba(0,0,0,.75)';
-      ctx.beginPath(); ctx.moveTo(sx-5,by+bh); ctx.lineTo(sx+5,by+bh); ctx.lineTo(sx,by+bh+7); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(btx,bty,btw,bth,5); ctx.stroke();
+      // Ok üçgeni
+      ctx.fillStyle='rgba(0,0,0,.82)';
+      ctx.beginPath(); ctx.moveTo(sx-6,bty+bth); ctx.lineTo(sx+6,bty+bth); ctx.lineTo(sx,bty+bth+8); ctx.closePath(); ctx.fill();
       ctx.strokeStyle=p.color||'#c8a96e'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.moveTo(sx-5,by+bh); ctx.lineTo(sx,by+bh+7); ctx.lineTo(sx+5,by+bh); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx-6,bty+bth); ctx.lineTo(sx,bty+bth+8); ctx.lineTo(sx+6,bty+bth); ctx.stroke();
       // Metin
-      ctx.fillStyle='#fff'; ctx.shadowBlur=0;
-      ctx.fillText(btxt,sx,by+bh-5);
+      ctx.fillStyle='#fff';
+      ctx.fillText(btxt,sx,bty+bth-5);
       ctx.restore();
     }
   });
@@ -1379,9 +1438,11 @@ function drawScreechDir(){
 
 // ── ISIK (LIGHTING) ──────────────────────────────────────────
 function drawLighting(){
+  if(settings.light==='off') return; // ışık kapalıysa karartma yok
   var me=gs.players[myId]; if(!me||!me.alive) return;
   var lx=me.x-cam.x, ly=me.y-cam.y;
-  var r=ms.lanternOn?(218+Math.sin(gt*0.05)*5):26;
+  var baseR=settings.light==='low'?180:220;
+  var r=ms.lanternOn?(baseR+Math.sin(gt*0.05)*5):26;
   // Lighting canvas temizle ve ciz
   lctx.clearRect(0,0,lc.width,lc.height);
   lctx.fillStyle=ms.lanternOn?'rgba(0,0,0,0.82)':'rgba(0,0,0,0.97)';
@@ -1491,6 +1552,20 @@ function loop(){
   requestAnimationFrame(loop);
   if(!joined) return;
   gt++;
+
+  // FPS sayacı
+  fpsFrames++;
+  var now=performance.now();
+  if(now-fpsLast>=1000){
+    fpsVal=fpsFrames;
+    fpsFrames=0;
+    fpsLast=now;
+    if(settings.showFps){
+      var fpsd=document.getElementById('fps-display');
+      if(fpsd) fpsd.textContent='FPS: '+fpsVal;
+    }
+  }
+
   ctx.clearRect(0,0,gc.width,gc.height);
   ctx.fillStyle='#000'; ctx.fillRect(0,0,gc.width,gc.height);
   chkNear();
@@ -1567,7 +1642,11 @@ document.addEventListener('keydown',function(e){
     var ci=document.getElementById('chat-inp');
     if(ci&&joined){ci.focus();e.preventDefault();return;}
   }
-  if(e.key==='Escape'){cpz();cDrop();closeMaze();closeShop();}
+  if(e.key.toLowerCase()==='p') openSettings();
+  if(e.key==='Escape'){
+    if(document.getElementById('settings-ov').style.display!=='none'){closeSettings();e.preventDefault();return;}
+    cpz();cDrop();closeMaze();closeShop();
+  }
   e.preventDefault();
 });
 document.addEventListener('keyup',function(e){
@@ -1579,6 +1658,61 @@ document.addEventListener('keyup',function(e){
 document.getElementById('ninp').addEventListener('keydown',function(e){if(e.key==='Enter')join();});
 
 // ── JOIN ─────────────────────────────────────────────────────
+// ── AYARLAR ───────────────────────────────────────────────────
+var settings={volume:80,music:true,fps:false,vibrate:true,chat:true,light:'high'};
+var fpsCounter=0,fpsTime=performance.now(),fpsVal=0;
+var globalVolume=0.8;
+
+function loadSettings(){
+  try{var s=JSON.parse(localStorage.getItem('doors_settings'));if(s)settings=Object.assign(settings,s);}catch(e){}
+  document.getElementById('set-volume').value=settings.volume;
+  document.getElementById('set-music').checked=settings.music;
+  document.getElementById('set-fps').checked=settings.fps;
+  document.getElementById('set-vibrate').checked=settings.vibrate;
+  document.getElementById('set-chat').checked=settings.chat;
+  document.getElementById('set-light').value=settings.light;
+  applySettings(true);
+}
+function applySettings(silent){
+  settings.volume=parseInt(document.getElementById('set-volume').value)||80;
+  settings.music=document.getElementById('set-music').checked;
+  settings.fps=document.getElementById('set-fps').checked;
+  settings.vibrate=document.getElementById('set-vibrate').checked;
+  settings.chat=document.getElementById('set-chat').checked;
+  settings.light=document.getElementById('set-light').value;
+  globalVolume=settings.volume/100;
+  // Chat göster/gizle
+  var cw=document.getElementById('chat-wrap');
+  if(cw) cw.style.display=settings.chat?'':'none';
+  // FPS göstergesi
+  var fd=document.getElementById('fps-display');
+  if(fd) fd.style.display=settings.fps?'block':'none';
+  // Ambiyans müzik
+  if(!settings.music) ambiOn=true; // durdur (ambiOn=true zaten oynuyor demek, false yapamıyoruz kolayca)
+  if(!silent) try{localStorage.setItem('doors_settings',JSON.stringify(settings));}catch(e){}
+}
+function resetSettings(){
+  settings={volume:80,music:true,fps:false,vibrate:true,chat:true,light:'high'};
+  loadSettings();
+  try{localStorage.removeItem('doors_settings');}catch(e){}
+}
+function openSettings(){document.getElementById('settings-ov').style.display='flex';}
+function closeSettings(){document.getElementById('settings-ov').style.display='none';}
+window.openSettings=openSettings;window.closeSettings=closeSettings;
+window.applySettings=applySettings;window.resetSettings=resetSettings;
+loadSettings();
+
+// FPS sayacı (ayarlarda açıksa)
+setInterval(function(){
+  fpsCounter++;
+  var now=performance.now();
+  if(now-fpsTime>=1000){
+    fpsVal=fpsCounter; fpsCounter=0; fpsTime=now;
+    var fd=document.getElementById('fps-display');
+    if(fd&&settings.fps) fd.textContent='FPS: '+fpsVal;
+  }
+},16);
+
 // ── RESPAWN ───────────────────────────────────────────────────
 window.doRespawn=function(){
   if(!socket||!socket.connected){
@@ -1624,6 +1758,8 @@ function doJoin(name){
 
 window.doI=doI; window.cpz=cpz; window.cDrop=cDrop; window.oDrop=oDrop;
 window.openShop=openShop; window.closeShop=closeShop; window.closeMaze=closeMaze;
+
+// (ayarlar fonksiyonları yukarıda tanımlandı)
 
 loop();
 </script>

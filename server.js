@@ -124,39 +124,32 @@ function moveE(e,dx,dy,room){
 
 function fid(t){return Object.keys(players).find(k=>players[k]===t);}
 
-// ─── KALKAN — TEK KULLANIMLIK ────────────────────────────────
-function shieldBlock(p){
+// Kalkan: saldıran canavarı öldürür, kendisi yok olur
+function shieldBlock(p, attackerMonster){
   if(!p.shielded||p.shieldHits<=0){p.shielded=false;return false;}
-  // Kalkan tam kırıldı — tek kullanım
-  p.shielded=false;p.shieldHits=0;
+  p.shielded=false; p.shieldHits=0;
   const tid=fid(p);
-  if(tid){
-    io.to(tid).emit('shieldBroke');
-    io.emit('floatText',{x:p.x,y:p.y-30,text:'🛡 KALKAN KIRIDI!',color:'#44aaff'});
-  }
+  if(tid) io.to(tid).emit('shieldBroke');
+  io.emit('floatText',{x:p.x,y:p.y-30,text:'KALKAN: CANAVAR YENILDI!',color:'#44aaff'});
+  // Saldıran canavarı öldür
+  if(attackerMonster) attackerMonster.alive=false;
+  if(tid) sendStats(p,tid);
   return true;
 }
 
-function kill(p,msg){
+function kill(p,msg,attacker){
   if(!p||!p.alive)return;
-  // Kalkan saldırıyı tamamen durdurur — ama sonra kırılır
-  if(shieldBlock(p)){
-    const tid=fid(p);if(tid)sendStats(p,tid);
-    return; // bu seferlik korundu, kalkan yok artık
-  }
-  p.alive=false;p.health=0;
+  if(shieldBlock(p,attacker)){return;}
+  p.alive=false; p.health=0;
   const tid=fid(p);if(tid)io.to(tid).emit('youDied',{msg});
   io.emit('playerDied',{id:tid,name:p.name});
 }
 
-function dmg(p,d){
+function dmg(p,d,attacker){
   if(!p||!p.alive)return;
-  if(shieldBlock(p)){
-    const tid=fid(p);if(tid)sendStats(p,tid);
-    return; // kalkan hasarı da bloklar
-  }
+  if(shieldBlock(p,attacker)){return;}
   p.health-=d;
-  if(p.health<=0)kill(p,'Canavar tarafından öldürüldün!');
+  if(p.health<=0)kill(p,'Canavar tarafından öldürüldün!',null);
 }
 
 function sendStats(p,id){
@@ -201,33 +194,38 @@ setInterval(()=>{
         m.aTimer--;if(m.aTimer<=0&&d>300)m.alerted=false;
         m.angle=ang;const s=mspd(4.5)+(m.aTimer>120?1.5:0);
         moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);
-        if(d<m.r+tgt.r+6)dmg(tgt,3);
+        if(d<m.r+tgt.r+6)dmg(tgt,3,m);
       }else{
         m.pA+=0.015;moveE(m,Math.cos(m.pA)*1.8,Math.sin(m.pA)*1.8,room);m.angle=m.pA;
         if(d<190||(tgt.sprinting&&d<420)){m.alerted=true;m.aTimer=260;}
       }
     }
     else if(m.type==='screech'){
-      // Screech: periyodik olarak oyuncunun yanında belirir, "pişt" sesi çıkarır
       m.timer=(m.timer||0)+1;
       if(!m.triggered){
-        // Her 180-260 tickte bir (9-13sn) oyuncunun yanında belirir
-        if(m.timer>m.nextAppear){
+        // İlk seferde veya bekleme süresi dolduysa teleport et
+        if(!m.nextAppear) m.nextAppear=200+ri(100);
+        if(m.timer>=m.nextAppear){
           m.timer=0;
-          m.nextAppear=180+Math.floor(Math.random()*80);
-          // Oyuncunun tam yanına teleport et (1-2 tile uzakta)
-          const angle=Math.random()*Math.PI*2;
-          const dist2=TILE*1.5+Math.random()*TILE;
-          let nx=tgt.x+Math.cos(angle)*dist2;
-          let ny=tgt.y+Math.sin(angle)*dist2;
-          // Duvardan kaçın
-          nx=Math.max(TILE*2,Math.min(room.w-TILE*2,nx));
-          ny=Math.max(TILE*2,Math.min(room.h-TILE*2,ny));
-          m.x=nx;m.y=ny;
-          m.triggered=true;m.attackTimer=0;
-          // Yön bilgisini de gönder (oyuncuya göre hangi yönde)
-          const dir=Math.atan2(ny-tgt.y,nx-tgt.x);
-          io.emit('screechAppear',{x:nx,y:ny,targetId:fid(tgt),angle:dir});
+          m.nextAppear=200+ri(100);
+          // Oyuncudan 1-2 tile uzakta rastgele konum
+          let placed=false;
+          for(let attempt=0;attempt<20;attempt++){
+            const angle=Math.random()*Math.PI*2;
+            const spDist=TILE*1.8+Math.random()*TILE*1.2;
+            let nx=tgt.x+Math.cos(angle)*spDist;
+            let ny=tgt.y+Math.sin(angle)*spDist;
+            nx=Math.max(TILE*2,Math.min(room.w-TILE*2,nx));
+            ny=Math.max(TILE*2,Math.min(room.h-TILE*2,ny));
+            const tx2=Math.floor(nx/TILE),ty2=Math.floor(ny/TILE);
+            if(tx2>=1&&tx2<RW-1&&ty2>=1&&ty2<RH-1&&room.g[ty2][tx2]===TF){
+              m.x=nx; m.y=ny; placed=true; break;
+            }
+          }
+          if(!placed){m.x=tgt.x; m.y=tgt.y;} // fallback
+          m.triggered=true; m.attackTimer=0;
+          const dir=Math.atan2(m.y-tgt.y,m.x-tgt.x);
+          io.emit('screechAppear',{x:m.x,y:m.y,targetId:fid(tgt),angle:dir});
           SFX_emit('screech');
         }
       } else {
@@ -235,14 +233,27 @@ setInterval(()=>{
         m.angle=ang;
         const s=mspd(9);
         moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);
-        if(d<m.r+tgt.r+4)kill(tgt,'Screech tarafından yakalandın!');
-        // 4 saniye sonra kaybolur
-        if(m.attackTimer>80){m.triggered=false;m.attackTimer=0;m.timer=0;m.nextAppear=180+Math.floor(Math.random()*80);}
+        if(d<m.r+tgt.r+4){
+          if(tgt.shielded&&tgt.shieldHits>0){
+            tgt.shielded=false; tgt.shieldHits=0;
+            m.alive=false;
+            const tid=fid(tgt);
+            if(tid){io.to(tid).emit('shieldBroke'); sendStats(tgt,tid);}
+            io.emit('floatText',{x:m.x,y:m.y-30,text:'SCREECH YENILDI!',color:'#44ff88'});
+          } else {
+            kill(tgt,'Screech tarafından yakalandın!',m);
+          }
+        }
+        // 4 saniye saldırıdan sonra gizlen
+        if(m.attackTimer>80){
+          m.triggered=false; m.attackTimer=0; m.timer=0;
+          m.nextAppear=200+ri(100); // yeni bekleme süresi
+        }
       }
     }
     else if(m.type==='seek'){
       const anyLight=alive.some(p=>p.lanternOn);
-      if(!anyLight){m.angle=ang;const s=mspd(m.spd);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);if(d<m.r+tgt.r+4)dmg(tgt,2.5);}
+      if(!anyLight){m.angle=ang;const s=mspd(m.spd);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);if(d<m.r+tgt.r+4)dmg(tgt,2.5,m);}
       else{m.pA+=0.025;moveE(m,Math.cos(m.pA)*0.8,Math.sin(m.pA)*0.8,room);}
     }
     else if(m.type==='ambush'){
@@ -254,18 +265,18 @@ setInterval(()=>{
         if(d<90){m.triggered=true;m.tTimer=0;io.emit('monsterAlert',{type:'ambush',x:m.x,y:m.y});SFX_emit('ambush');}
       }else{
         m.angle=ang;const s=mspd(7.5);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);
-        if(d<m.r+tgt.r+4)kill(tgt,'Ambush tarafından yakalandın!');
+        if(d<m.r+tgt.r+4)kill(tgt,'Ambush tarafından yakalandın!',m);
         m.tTimer++;if(d>420&&m.tTimer>100){m.triggered=false;m.tTimer=0;m.w1=false;m.w2=false;m.w3=false;}
       }
     }
     else if(m.type==='shadow'){
       m.pA+=0.015;
       if(!m.vis){moveE(m,Math.cos(m.pA)*2.5,Math.sin(m.pA)*2.5,room);if(d<140){m.vis=true;m.vTimer=0;io.emit('monsterAlert',{type:'shadow',x:m.x,y:m.y});SFX_emit('shadow');}}
-      else{m.vTimer++;m.angle=ang;const s=mspd(6.5);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);if(d<m.r+tgt.r+4)dmg(tgt,4);if(m.vTimer>260){m.vis=false;m.vTimer=0;}}
+      else{m.vTimer++;m.angle=ang;const s=mspd(6.5);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);if(d<m.r+tgt.r+4)dmg(tgt,4,m);if(m.vTimer>260){m.vis=false;m.vTimer=0;}}
     }
     else if(m.type==='mimic'){
       if(!m.triggered){if(d<95){m.triggered=true;m.disguised=false;io.emit('monsterAlert',{type:'mimic',x:m.x,y:m.y});SFX_emit('mimic');}}
-      else{m.angle=ang;const s=mspd(7);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);if(d<m.r+tgt.r+4)kill(tgt,'Mimic tarafından yakalandın!');}
+      else{m.angle=ang;const s=mspd(7);moveE(m,Math.cos(ang)*s,Math.sin(ang)*s,room);if(d<m.r+tgt.r+4)kill(tgt,'Mimic tarafından yakalandın!',m);}
     }
   });
 
